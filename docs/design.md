@@ -129,3 +129,4 @@ started in parallel once 1–3 are done.
 | 5 | Skills (our own, vetted; no marketplace) | Reusable ways of working, e.g. meeting prep |
 | 6 | Web search, then a browser (built-in WebKit pane) | Useful but slow and fragile; browser last |
 | 7 | Coding (Claude Code as a tool) | Biggest risk; needs a done-predicate, a separate verifier and evidence |
+| ? | To decide: sub bots, bot-to-bot communication, background processes, artifacts, servers | Shapes routines (1) and coding (7); undecided where it fits in the order |
