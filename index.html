@@ -2,97 +2,213 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Reef bot</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&family=Geist+Mono:wght@100..900&display=swap" />
+<!-- Look follows atoll's thread view (web/src/index.css, thread-view.tsx). -->
 <style>
-  :root { --bg: #fafaf9; --fg: #1c1917; --muted: #78716c; --line: #e7e5e4; --card: #fff; --accent: #0f766e; }
-  @media (prefers-color-scheme: dark) {
-    :root { --bg: #1c1917; --fg: #f5f5f4; --muted: #a8a29e; --line: #3a3532; --card: #26221f; --accent: #2dd4bf; }
+  :root {
+    --bg: #131313; --ink: #ececec; --muted: #9b9b9b; --label: #8e8e93; --line: #262626; --outline: #333;
+    --composer: #222; --composer-line: #2e2e2e; --box: #1f1f1f; --well: #151515; --tile: #2a2a2a;
+    --accent: #ececec; --accent-ink: #161616; --danger: #e5484d; --bot: #42b8a8;
+    --sans: "Geist", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    --mono: "Geist Mono", "SF Mono", ui-monospace, Menlo, monospace;
   }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.55 -apple-system, system-ui, sans-serif; }
-  main { max-width: 720px; margin: 0 auto; padding: 24px 16px 120px; }
-  header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 20px; }
-  header h1 { font-size: 17px; margin: 0; }
-  header span, .meta, .step { color: var(--muted); font-size: 13px; }
-  .msg { margin: 18px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
-  .you { color: var(--muted); }
-  .you::before { content: "You  "; font-weight: 600; }
-  a { color: var(--accent); }
-  .step { margin: 4px 0; font-family: ui-monospace, monospace; }
-  .update { margin: 8px 0; color: var(--muted); white-space: pre-wrap; }
-  .card { border: 1px solid var(--line); background: var(--card); border-radius: 10px; padding: 12px; margin: 10px 0; }
-  .card textarea { width: 100%; min-height: 70px; font: inherit; background: transparent; color: inherit; border: 1px solid var(--line); border-radius: 6px; padding: 6px; }
-  .card .row { display: flex; gap: 8px; margin-top: 8px; }
-  button { font: inherit; padding: 6px 14px; border-radius: 6px; border: 1px solid var(--line); background: var(--card); color: inherit; cursor: pointer; }
-  button.primary { background: var(--accent); border-color: var(--accent); color: var(--bg); }
-  form { position: fixed; bottom: 0; left: 0; right: 0; background: var(--bg); border-top: 1px solid var(--line); padding: 12px 16px; }
-  form div { max-width: 720px; margin: 0 auto; display: flex; gap: 8px; }
-  form input { flex: 1; font: inherit; padding: 9px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: inherit; }
-</style>
-<main>
-  <header><h1 id="botname">Bot</h1><span><span id="mode"></span> · <a href="#" id="new">New chat</a></span></header>
-  <div id="log"></div>
-</main>
-<form id="f"><div><input id="q" placeholder="Ask your bot" autocomplete="off" autofocus /><button class="primary">Send</button></div></form>
-<script>
-  let thread = crypto.randomUUID();
-  fetch("/bot").then((r) => r.json()).then((b) => { botname.textContent = b.name; mode.textContent = `slack: ${b.slack} · memory: ${b.memoryMode}`; });
-  document.getElementById("new").onclick = (e) => { e.preventDefault(); thread = crypto.randomUUID(); log.replaceChildren(); };
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 var(--sans); letter-spacing: -0.005em; -webkit-font-smoothing: antialiased; }
+  button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+  button:disabled { opacity: 0.5; cursor: default; }
+  a { color: inherit; text-decoration: underline; text-decoration-color: var(--label); text-underline-offset: 2px; }
+  a:hover { text-decoration-color: var(--ink); }
+  .quiet { font-size: 13px; color: var(--muted); }
+  .quiet:hover { color: var(--ink); }
 
+  header { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 10px; padding: 12px 20px; background: var(--bg); border-bottom: 1px solid var(--line); }
+  header h1 { font-size: 14px; font-weight: 500; margin: 0; }
+  header .meta { flex: 1; color: var(--muted); font-size: 12px; }
+  .dot { width: 24px; height: 24px; flex: none; border-radius: 50%; background: var(--bot); position: relative; }
+  .dot::before, .dot::after { content: ""; position: absolute; top: 38%; width: 16%; height: 22%; border-radius: 2px; background: #1c1c1e; }
+  .dot::before { left: 30%; } .dot::after { right: 30%; }
+  .dot.big { width: 88px; height: 88px; }
+  .dot.working { animation: bob 1.6s ease-in-out infinite; }
+
+  main { max-width: 760px; margin: 0 auto; padding: 24px 20px 160px; display: flex; flex-direction: column; gap: 24px; }
+  .empty { min-height: calc(100vh - 140px); justify-content: center; align-items: center; gap: 16px; padding-bottom: 24px; }
+  .empty h2 { font-size: 28px; font-weight: 400; letter-spacing: -0.02em; margin: 0; }
+  .starters { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+  .starters button { border: 1px solid var(--line); border-radius: 999px; padding: 8px 12px; font-size: 14px; }
+  .starters button:hover { background: var(--box); }
+
+  .chat { font-size: 15px; line-height: 1.6; letter-spacing: normal; overflow-wrap: anywhere; }
+  .you { align-self: flex-end; max-width: 75%; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+  .bubble { background: var(--accent); color: var(--accent-ink); border-radius: 22px; padding: 10px 18px; white-space: pre-wrap; }
+  .time { font-size: 12px; color: var(--muted); padding-right: 18px; }
+  .reply { display: flex; flex-direction: column; gap: 12px; }
+  .reply > * { margin: 0; }
+  .reply ul, .reply ol { padding-left: 20px; } .reply li + li { margin-top: 4px; }
+  .reply h1, .reply h2, .reply h3, .reply h4 { font-size: 15px; font-weight: 600; margin: 8px 0 -6px; }
+  .reply h1:first-child, .reply h2:first-child, .reply h3:first-child { margin-top: 0; }
+  .reply code { font-family: var(--mono); font-size: 0.88em; background: var(--tile); border-radius: 8px; padding: 0 4px; }
+  .reply pre { overflow: auto; background: var(--well); border: 1px solid var(--line); border-radius: 16px; padding: 12px; }
+  .reply pre code { background: none; padding: 0; }
+  .update { color: var(--muted); font-size: 14px; white-space: pre-wrap; }
+
+  .status { display: flex; align-items: center; gap: 12px; font-size: 14px; }
+  .status .dot { width: 32px; height: 32px; }
+  .status .text { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    background: linear-gradient(100deg, var(--muted) 30%, var(--ink) 50%, var(--muted) 70%); background-size: 250% 100%;
+    -webkit-background-clip: text; background-clip: text; color: transparent; animation: tide 2.6s ease-in-out infinite; }
+  .status .clock { font-size: 12px; color: var(--label); font-variant-numeric: tabular-nums; }
+  .footer { font-size: 12px; color: var(--muted); }
+  details.steps { font-size: 13px; color: var(--muted); }
+  details.steps summary { cursor: pointer; width: fit-content; }
+  details.steps summary:hover { color: var(--ink); }
+  details.steps div { font-family: var(--mono); font-size: 12px; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .error { color: var(--danger); font-size: 14px; }
+
+  .approval { display: flex; flex-direction: column; gap: 8px; font-size: 14px; }
+  .approval .what { color: var(--muted); }
+  .approval .what code { font-family: var(--mono); font-size: 12.5px; color: var(--ink); background: var(--box); border-radius: 6px; padding: 2px 6px; }
+  .approval textarea { width: 100%; min-height: 72px; resize: vertical; font: 12.5px/20px var(--mono); color: var(--ink); background: var(--box); border: 1px solid var(--outline); border-radius: 12px; padding: 8px 10px; }
+  .approval .row { display: flex; gap: 8px; align-items: center; }
+  .pill { height: 32px; border-radius: 999px; padding: 0 16px; font-size: 13.5px; }
+  .pill.yes { background: var(--accent); color: var(--accent-ink); }
+  .pill.no { border: 1px solid var(--outline); }
+  .pill.no:hover { border-color: var(--danger); color: var(--danger); }
+
+  form { position: fixed; bottom: 0; left: 0; right: 0; padding: 12px 20px 20px; background: linear-gradient(transparent, var(--bg) 30%); }
+  .empty ~ form, form.inline { position: static; padding: 0; background: none; width: 100%; }
+  .composer { max-width: 720px; margin: 0 auto; display: flex; align-items: flex-end; gap: 10px; min-height: 56px; border: 1px solid var(--composer-line); background: var(--composer); border-radius: 28px; padding: 8px 8px 8px 18px; }
+  .composer textarea { flex: 1; align-self: center; resize: none; max-height: 194px; border: 0; outline: 0; background: none; color: var(--ink); font: 15px/22px var(--sans); padding: 9px 0; }
+  .composer textarea::placeholder { color: var(--muted); }
+  .send { width: 38px; height: 38px; flex: none; border-radius: 50%; background: var(--accent); color: var(--accent-ink); display: grid; place-items: center; }
+
+  @keyframes tide { from { background-position: 140% 0; } to { background-position: -40% 0; } }
+  @keyframes bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-2.5px); } }
+  @media (prefers-reduced-motion: reduce) { .status .text { animation: none; background: none; color: var(--muted); } .dot.working { animation: none; } }
+</style>
+<header><span class="dot"></span><h1 id="botname">Bot</h1><span class="meta" id="mode"></span><button class="quiet" id="new">New chat</button></header>
+<main id="log"></main>
+<form id="f"><div class="composer">
+  <textarea id="q" rows="1" placeholder="Ask your bot" autofocus></textarea>
+  <button class="send" aria-label="Send"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 13V3M3.5 7.5 8 3l4.5 4.5" /></svg></button>
+</div></form>
+<script>
+  // Real refs: the form moves in and out of the page, and id globals vanish while it's detached.
+  const [log, f, q] = ["log", "f", "q"].map((id) => document.getElementById(id));
+  let thread = crypto.randomUUID(), botName = "Bot", busy = false;
+  const starters = ["What did I miss?", "Who's waiting on me?", "What did I promise?"];
   const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text) n.textContent = text; return n; };
-  // Just enough markdown for replies: [text](url), bare urls, **bold**.
-  const linkify = (node, text) => {
-    node.replaceChildren();
-    for (const part of text.split(/(\[[^\]]+\]\(https?:\/\/[^)\s]+\)|https?:\/\/[^\s)>\]]+|\*\*[^*]+\*\*)/g)) {
+  const clock = () => new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+
+  fetch("/bot").then((r) => r.json()).then((b) => { botName = b.name; botname.textContent = b.name; mode.textContent = `slack: ${b.slack} · memory: ${b.memoryMode}`; if (!log.children.length || log.classList.contains("empty")) empty(); });
+
+  function empty() {
+    log.className = "empty"; log.replaceChildren(el("span", "dot big"), el("h2", "", `What should ${botName} look at?`));
+    const row = el("div", "starters");
+    for (const s of starters) { const b = el("button", "", s); b.type = "button"; b.onclick = () => send(s); row.append(b); }
+    log.append(f, row); f.classList.add("inline"); q.focus();
+  }
+  function started() { if (log.className !== "empty") return; log.className = ""; log.replaceChildren(); document.body.append(f); f.classList.remove("inline"); }
+  document.getElementById("new").onclick = () => { if (!busy) { thread = crypto.randomUUID(); empty(); } };
+
+  // Small markdown: headings, lists, fenced code, paragraphs; inline links, bare urls, **bold**, `code`.
+  const inline = (node, text) => {
+    for (const part of text.split(/(\[[^\]]+\]\(https?:\/\/[^)\s]+\)|https?:\/\/[^\s)>\]]+|\*\*[^*]+\*\*|`[^`]+`)/g)) {
       const md = part.match(/^\[([^\]]+)\]\((.+)\)$/);
       if (md || /^https?:\/\//.test(part)) { const a = el("a", "", md ? md[1] : part); a.href = md ? md[2] : part; a.target = "_blank"; a.title = a.href; node.append(a); }
       else if (/^\*\*.+\*\*$/.test(part)) node.append(el("strong", "", part.slice(2, -2)));
+      else if (/^`.+`$/.test(part)) node.append(el("code", "", part.slice(1, -1)));
       else node.append(part);
     }
+    return node;
   };
+  function markdown(node, text) {
+    node.replaceChildren();
+    const lines = text.split("\n");
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (!line.trim()) continue;
+      if (line.startsWith("```")) {
+        const code = []; while (++i < lines.length && !lines[i].startsWith("```")) code.push(lines[i]);
+        const pre = el("pre"); pre.append(el("code", "", code.join("\n"))); node.append(pre); continue;
+      }
+      const h = line.match(/^(#{1,4})\s+(.*)/);
+      if (h) { node.append(inline(el(`h${h[1].length}`), h[2])); continue; }
+      const item = /^\s*([-*•]|\d+[.)])\s+/;
+      if (item.test(line)) {
+        const list = el(/^\s*\d/.test(line) ? "ol" : "ul");
+        for (; i < lines.length && item.test(lines[i]); i++) list.append(inline(el("li"), lines[i].replace(item, "")));
+        i--; node.append(list); continue;
+      }
+      const para = [line];
+      while (i + 1 < lines.length && lines[i + 1].trim() && !/^(#{1,4}\s|```|\s*([-*•]|\d+[.)])\s)/.test(lines[i + 1])) para.push(lines[++i]);
+      node.append(inline(el("p"), para.join("\n")));
+    }
+  }
   const brief = (input) => Object.values(input ?? {}).map((v) => String(v).slice(0, 40)).join(", ");
+  const verb = (name) => ({ read_channel: "Reading", read_thread: "Reading", search: "Searching", list_channels: "Looking at channels", read_memory: "Checking memory", remember: "Remembering", edit_memory: "Remembering", send_message: "Drafting" })[name.split(".").pop().replace(/^slack_/, "")] ?? "Working";
 
   function approval(e) {
-    const card = el("div", "card");
-    card.append(el("div", "", `Approve ${e.tool} to ${e.input.channel}${e.input.reply_to ? " (thread)" : ""}?`));
-    const box = el("textarea"); box.value = e.input.text; card.append(box);
-    const row = el("div", "row"), yes = el("button", "primary", "Send"), no = el("button", "", "Don't send");
-    row.append(yes, no); card.append(row);
+    const card = el("div", "approval");
+    const what = el("div", "what", `${botName} wants to ${e.tool.replace(/_/g, " ")} to `);
+    what.append(el("code", "", `${e.input.channel}${e.input.reply_to ? " (thread)" : ""}`));
+    const box = el("textarea"); box.value = e.input.text;
+    const row = el("div", "row"), yes = el("button", "pill yes", "Send"), no = el("button", "pill no", "Don't send");
+    row.append(yes, no); card.append(what, box, row);
     const answer = async (allow) => {
       yes.disabled = no.disabled = true;
       await fetch("/approve", { method: "POST", body: JSON.stringify({ id: e.id, allow, input: { ...e.input, text: box.value } }) });
-      row.replaceWith(el("div", "meta", allow ? "Approved" : "Declined"));
+      row.replaceWith(el("div", "footer", allow ? "Sent with your approval" : "You declined"));
       box.readOnly = true;
     };
     yes.onclick = () => answer(true); no.onclick = () => answer(false);
     return card;
   }
 
-  f.onsubmit = async (ev) => {
-    ev.preventDefault();
-    const text = q.value.trim(); if (!text) return; q.value = "";
-    log.append(el("div", "msg you", text));
+  async function send(text) {
+    if (busy || !text.trim()) return;
+    busy = true; started();
+    const you = el("div", "you"); you.append(el("div", "bubble chat", text), el("span", "time", clock())); log.append(you);
+
+    const status = el("div", "status"), label = el("span", "text", "Thinking"), timer = el("span", "clock", "0:00");
+    status.append(el("span", "dot working"), label, timer);
+    const t0 = Date.now(), tick = setInterval(() => { const s = Math.floor((Date.now() - t0) / 1000); timer.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; }, 1000);
+    const steps = el("details", "steps"), summary = el("summary"); steps.append(summary);
+    let count = 0;
+    log.append(status);
+    const before = (node) => log.insertBefore(node, status);
+    const step = (line) => { steps.append(el("div", "", line)); summary.textContent = `${++count} step${count === 1 ? "" : "s"}`; if (!steps.isConnected) before(steps); };
+
     let reply = null, buf = "";
-    const res = await fetch("/chat", { method: "POST", body: JSON.stringify({ thread, text }) });
-    const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
-    let pending = "";
-    for (;;) {
-      const { value, done } = await reader.read(); if (done) break;
-      pending += value;
-      const lines = pending.split("\n"); pending = lines.pop();
-      for (const line of lines) {
-        if (!line) continue;
-        const e = JSON.parse(line);
-        if (e.type === "text") { if (!reply) { reply = el("div", "msg"); log.append(reply); buf = ""; } buf += e.text; linkify(reply, buf); }
-        else { reply = null;
-          if (e.type === "tool") log.append(el("div", "step", `→ ${e.name}(${brief(e.input)})`));
-          if (e.type === "update") log.append(el("div", "update", e.text));
-          if (e.type === "memory") log.append(el("div", "step", `✎ ${e.file}: ${e.text}`));
-          if (e.type === "approval") log.append(approval(e));
-          if (e.type === "done") log.append(el("div", "meta", `${(e.ms / 1000).toFixed(1)} s · $${e.usd.toFixed(4)} · ${e.turns} turns`));
-          if (e.type === "error") log.append(el("div", "msg", `Something went wrong: ${e.message}`));
+    try {
+      const res = await fetch("/chat", { method: "POST", body: JSON.stringify({ thread, text }) });
+      const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+      let pending = "";
+      for (;;) {
+        const { value, done } = await reader.read(); if (done) break;
+        pending += value;
+        const lines = pending.split("\n"); pending = lines.pop();
+        for (const line of lines) {
+          if (!line) continue;
+          const e = JSON.parse(line);
+          if (e.type === "text") { if (!reply) { reply = el("div", "reply chat"); before(reply); buf = ""; } buf += e.text; markdown(reply, buf); label.textContent = "Writing"; }
+          else { reply = null;
+            if (e.type === "tool") { step(`→ ${e.name}(${brief(e.input)})`); label.textContent = `${verb(e.name)} ${brief(e.input)}`.trim(); }
+            if (e.type === "update") before(el("div", "update", e.text));
+            if (e.type === "memory") { step(`✎ ${e.file}: ${e.text}`); label.textContent = "Remembering"; }
+            if (e.type === "approval") { before(approval(e)); label.textContent = "Waiting for you"; }
+            if (e.type === "done") before(el("div", "footer", `${clock()} · Worked ${(e.ms / 1000).toFixed(1)}s · $${e.usd.toFixed(4)} · ${e.turns} turns`));
+            if (e.type === "error") before(el("div", "error", `Something went wrong: ${e.message}`));
+          }
+          scrollTo(0, document.body.scrollHeight);
         }
-        scrollTo(0, document.body.scrollHeight);
       }
-    }
-  };
+    } catch (err) { before(el("div", "error", `Something went wrong: ${err.message}`)); }
+    clearInterval(tick); status.remove(); busy = false; q.focus();
+  }
+
+  const grow = () => { q.style.height = "auto"; q.style.height = `${q.scrollHeight}px`; };
+  q.oninput = grow;
+  q.onkeydown = (ev) => { if (ev.key === "Enter" && !ev.shiftKey && !ev.isComposing) { ev.preventDefault(); f.requestSubmit(); } };
+  f.onsubmit = (ev) => { ev.preventDefault(); const text = q.value; if (busy || !text.trim()) return; q.value = ""; grow(); send(text); };
+  empty();
 </script>
