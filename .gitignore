@@ -1,0 +1,9 @@
+node_modules/
+# run logs and request captures: hold the owner's email and Slack content
+data/
+# a bot's memory fills with real personal facts; created from headers on first start
+bots/*/memory/
+.env*
+*.log
+.DS_Store
+.claude/settings.local.json

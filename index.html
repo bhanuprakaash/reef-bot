@@ -1,0 +1,98 @@
+<!doctype html>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Reef bot</title>
+<style>
+  :root { --bg: #fafaf9; --fg: #1c1917; --muted: #78716c; --line: #e7e5e4; --card: #fff; --accent: #0f766e; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #1c1917; --fg: #f5f5f4; --muted: #a8a29e; --line: #3a3532; --card: #26221f; --accent: #2dd4bf; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.55 -apple-system, system-ui, sans-serif; }
+  main { max-width: 720px; margin: 0 auto; padding: 24px 16px 120px; }
+  header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 20px; }
+  header h1 { font-size: 17px; margin: 0; }
+  header span, .meta, .step { color: var(--muted); font-size: 13px; }
+  .msg { margin: 18px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .you { color: var(--muted); }
+  .you::before { content: "You  "; font-weight: 600; }
+  a { color: var(--accent); }
+  .step { margin: 4px 0; font-family: ui-monospace, monospace; }
+  .update { margin: 8px 0; color: var(--muted); white-space: pre-wrap; }
+  .card { border: 1px solid var(--line); background: var(--card); border-radius: 10px; padding: 12px; margin: 10px 0; }
+  .card textarea { width: 100%; min-height: 70px; font: inherit; background: transparent; color: inherit; border: 1px solid var(--line); border-radius: 6px; padding: 6px; }
+  .card .row { display: flex; gap: 8px; margin-top: 8px; }
+  button { font: inherit; padding: 6px 14px; border-radius: 6px; border: 1px solid var(--line); background: var(--card); color: inherit; cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+  form { position: fixed; bottom: 0; left: 0; right: 0; background: var(--bg); border-top: 1px solid var(--line); padding: 12px 16px; }
+  form div { max-width: 720px; margin: 0 auto; display: flex; gap: 8px; }
+  form input { flex: 1; font: inherit; padding: 9px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: inherit; }
+</style>
+<main>
+  <header><h1 id="botname">Bot</h1><span><span id="mode"></span> · <a href="#" id="new">New chat</a></span></header>
+  <div id="log"></div>
+</main>
+<form id="f"><div><input id="q" placeholder="Ask your bot" autocomplete="off" autofocus /><button class="primary">Send</button></div></form>
+<script>
+  let thread = crypto.randomUUID();
+  fetch("/bot").then((r) => r.json()).then((b) => { botname.textContent = b.name; mode.textContent = `slack: ${b.slack} · memory: ${b.memoryMode}`; });
+  document.getElementById("new").onclick = (e) => { e.preventDefault(); thread = crypto.randomUUID(); log.replaceChildren(); };
+
+  const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text) n.textContent = text; return n; };
+  // Just enough markdown for replies: [text](url), bare urls, **bold**.
+  const linkify = (node, text) => {
+    node.replaceChildren();
+    for (const part of text.split(/(\[[^\]]+\]\(https?:\/\/[^)\s]+\)|https?:\/\/[^\s)>\]]+|\*\*[^*]+\*\*)/g)) {
+      const md = part.match(/^\[([^\]]+)\]\((.+)\)$/);
+      if (md || /^https?:\/\//.test(part)) { const a = el("a", "", md ? md[1] : part); a.href = md ? md[2] : part; a.target = "_blank"; a.title = a.href; node.append(a); }
+      else if (/^\*\*.+\*\*$/.test(part)) node.append(el("strong", "", part.slice(2, -2)));
+      else node.append(part);
+    }
+  };
+  const brief = (input) => Object.values(input ?? {}).map((v) => String(v).slice(0, 40)).join(", ");
+
+  function approval(e) {
+    const card = el("div", "card");
+    card.append(el("div", "", `Approve ${e.tool} to ${e.input.channel}${e.input.reply_to ? " (thread)" : ""}?`));
+    const box = el("textarea"); box.value = e.input.text; card.append(box);
+    const row = el("div", "row"), yes = el("button", "primary", "Send"), no = el("button", "", "Don't send");
+    row.append(yes, no); card.append(row);
+    const answer = async (allow) => {
+      yes.disabled = no.disabled = true;
+      await fetch("/approve", { method: "POST", body: JSON.stringify({ id: e.id, allow, input: { ...e.input, text: box.value } }) });
+      row.replaceWith(el("div", "meta", allow ? "Approved" : "Declined"));
+      box.readOnly = true;
+    };
+    yes.onclick = () => answer(true); no.onclick = () => answer(false);
+    return card;
+  }
+
+  f.onsubmit = async (ev) => {
+    ev.preventDefault();
+    const text = q.value.trim(); if (!text) return; q.value = "";
+    log.append(el("div", "msg you", text));
+    let reply = null, buf = "";
+    const res = await fetch("/chat", { method: "POST", body: JSON.stringify({ thread, text }) });
+    const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+    let pending = "";
+    for (;;) {
+      const { value, done } = await reader.read(); if (done) break;
+      pending += value;
+      const lines = pending.split("\n"); pending = lines.pop();
+      for (const line of lines) {
+        if (!line) continue;
+        const e = JSON.parse(line);
+        if (e.type === "text") { if (!reply) { reply = el("div", "msg"); log.append(reply); buf = ""; } buf += e.text; linkify(reply, buf); }
+        else { reply = null;
+          if (e.type === "tool") log.append(el("div", "step", `→ ${e.name}(${brief(e.input)})`));
+          if (e.type === "update") log.append(el("div", "update", e.text));
+          if (e.type === "memory") log.append(el("div", "step", `✎ ${e.file}: ${e.text}`));
+          if (e.type === "approval") log.append(approval(e));
+          if (e.type === "done") log.append(el("div", "meta", `${(e.ms / 1000).toFixed(1)} s · $${e.usd.toFixed(4)} · ${e.turns} turns`));
+          if (e.type === "error") log.append(el("div", "msg", `Something went wrong: ${e.message}`));
+        }
+        scrollTo(0, document.body.scrollHeight);
+      }
+    }
+  };
+</script>

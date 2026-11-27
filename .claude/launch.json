@@ -1,0 +1,9 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    { "name": "bot", "runtimeExecutable": "node", "runtimeArgs": ["src/server.ts"], "port": 4700 },
+    { "name": "bot-real", "runtimeExecutable": "node", "runtimeArgs": ["src/server.ts"], "port": 4701, "env": { "SLACK": "real", "PORT": "4701" } },
+    { "name": "proxy", "runtimeExecutable": "node", "runtimeArgs": ["src/proxy.ts"], "port": 4600 },
+    { "name": "bot-capture", "runtimeExecutable": "node", "runtimeArgs": ["src/server.ts"], "port": 4702, "env": { "SLACK": "real", "PORT": "4702", "ANTHROPIC_BASE_URL": "http://127.0.0.1:4600" } }
+  ]
+}
